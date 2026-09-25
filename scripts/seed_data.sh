@@ -33,4 +33,14 @@ STATE_FILE=""   # nothing to resume here
 [ -f "$REPO_ROOT/backend/pyproject.toml" ] || { echo "❌ Not a GCC checkout: $REPO_ROOT"; exit 1; }
 cd "$REPO_ROOT"
 
-seed_data && echo "✅ Seed data loaded into project ${GCP_PROJECT_ID}."
+# seed_data calls `fail` (exit) and sets its own EXIT trap, so run it in a subshell
+if ( seed_data ); then
+    echo "✅ Seed data loaded into project ${GCP_PROJECT_ID}."
+else
+    rc=$?
+    echo "❌ Seeding failed (exit ${rc})."
+    if [ -f "$REPO_ROOT/cloud-sql-proxy.log" ]; then
+        echo "--- last lines of cloud-sql-proxy.log ---"; tail -n 15 "$REPO_ROOT/cloud-sql-proxy.log"
+    fi
+    exit "$rc"
+fi

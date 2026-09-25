@@ -159,10 +159,11 @@ start_sql_proxy() {
         arm64|aarch64) PROXY_ARCH="arm64" ;;
         *) fail "Unsupported CPU architecture for Cloud SQL Proxy: $(uname -m)" ;;
     esac
+    PROXY_VERSION="v2.25.4"   # developlocal: v2.8.0 (2023) can't connect to new PostgreSQL 18 instances
     PROXY_BIN="cloud-sql-proxy.${PROXY_OS}.${PROXY_ARCH}"
-    if [ ! -x "$PROXY_BIN" ] || ! "./$PROXY_BIN" --version > /dev/null 2>&1; then
+    if [ ! -x "$PROXY_BIN" ] || ! "./$PROXY_BIN" --version 2>/dev/null | grep -q "${PROXY_VERSION#v}"; then
         info "Downloading Cloud SQL Proxy (${PROXY_OS}/${PROXY_ARCH})..."
-        curl -fsSLo "$PROXY_BIN" "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.0/${PROXY_BIN}" \
+        curl -fsSLo "$PROXY_BIN" "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/${PROXY_VERSION}/${PROXY_BIN}" \
             || fail "Could not download ${PROXY_BIN}"
         chmod +x "$PROXY_BIN"
     fi
