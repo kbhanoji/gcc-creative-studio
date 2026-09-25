@@ -112,3 +112,9 @@ variable "db_edition" {
   description = "Cloud SQL edition (ENTERPRISE or ENTERPRISE_PLUS). null = provider default."
   default     = null
 }
+
+variable "image_keep_count" {
+  type        = number
+  description = "Backend container images kept in Artifact Registry. 0 = keep all (upstream behaviour)."
+  default     = 0
+}

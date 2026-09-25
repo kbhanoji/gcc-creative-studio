@@ -129,3 +129,9 @@ variable "db_secret_id" {
 }
 variable "db_name" { type = string }
 variable "db_user" { type = string }
+
+variable "image_keep_count" {
+  type        = number
+  description = "developlocal: keep only the N most recent images (older than 1 day are deleted). 0 = keep all."
+  default     = 0
+}

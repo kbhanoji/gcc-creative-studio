@@ -50,6 +50,7 @@ module "creative_studio_platform" {
   db_autostart     = var.db_autostart
   db_tier          = var.db_tier
   db_edition       = var.db_edition
+  image_keep_count = var.image_keep_count
 
   gcp_project_id            = var.gcp_project_id
   gcp_region                = var.gcp_region

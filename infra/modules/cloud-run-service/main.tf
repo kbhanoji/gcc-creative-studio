@@ -29,6 +29,30 @@ resource "google_artifact_registry_repository" "repo" {
   repository_id = "${var.resource_prefix}-${var.environment}-repo"
   description   = "Docker repository for ${var.service_name}"
   format        = "DOCKER"
+
+  # developlocal: every push builds a new image; keep only the most recent ones
+  cleanup_policy_dry_run = false
+  dynamic "cleanup_policies" {
+    for_each = var.image_keep_count > 0 ? [1] : []
+    content {
+      id     = "delete-older-than-1-day"
+      action = "DELETE"
+      condition {
+        tag_state  = "ANY"
+        older_than = "86400s"
+      }
+    }
+  }
+  dynamic "cleanup_policies" {
+    for_each = var.image_keep_count > 0 ? [1] : []
+    content {
+      id     = "keep-most-recent"
+      action = "KEEP"
+      most_recent_versions {
+        keep_count = var.image_keep_count
+      }
+    }
+  }
 }
 
 resource "google_cloud_run_v2_service" "this" {

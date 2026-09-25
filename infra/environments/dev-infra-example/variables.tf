@@ -141,12 +141,18 @@ variable "db_autostart" {
 
 variable "db_tier" {
   type        = string
-  description = "Cloud SQL machine tier. Upstream default db-perf-optimized-N-2 (Enterprise Plus)."
-  default     = "db-perf-optimized-N-2"
+  description = "Cloud SQL machine tier. developlocal: 1 vCPU / 3.75 GB (~$50/month at 24/7). Upstream: db-perf-optimized-N-2."
+  default     = "db-custom-1-3840"
 }
 
 variable "db_edition" {
   type        = string
-  description = "Cloud SQL edition (ENTERPRISE or ENTERPRISE_PLUS). null = provider default."
-  default     = null
+  description = "Cloud SQL edition. developlocal: ENTERPRISE (required for db-custom-* tiers). Upstream: provider default."
+  default     = "ENTERPRISE"
+}
+
+variable "image_keep_count" {
+  type        = number
+  description = "Backend container images kept in Artifact Registry (older ones deleted after 1 day). 0 = keep all."
+  default     = 5
 }
