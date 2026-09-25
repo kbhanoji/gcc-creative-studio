@@ -24,8 +24,13 @@ gcloud config set project "$GCP_PROJECT_ID" > /dev/null
 # bootstrap.sh looks here for Terraform outputs; when absent it falls back to gcloud
 mkdir -p "$REPO_ROOT/infra/environments/$ENV_NAME"
 
-# Load bootstrap.sh's functions without running its main flow.
-source <(sed '$d' "$REPO_ROOT/bootstrap.sh")
+# Load bootstrap.sh's functions without running its main flow. Sourcing resets
+# its globals (REPO_ROOT="", STATE_FILE="", ...), so set ours again afterwards.
+_ROOT="$REPO_ROOT"; _PROJECT="$GCP_PROJECT_ID"; _ENV="$ENV_NAME"
+source <(sed '$d' "$_ROOT/bootstrap.sh")
+REPO_ROOT="$_ROOT"; GCP_PROJECT_ID="$_PROJECT"; ENV_NAME="$_ENV"
 STATE_FILE=""   # nothing to resume here
+[ -f "$REPO_ROOT/backend/pyproject.toml" ] || { echo "❌ Not a GCC checkout: $REPO_ROOT"; exit 1; }
+cd "$REPO_ROOT"
 
 seed_data && echo "✅ Seed data loaded into project ${GCP_PROJECT_ID}."
