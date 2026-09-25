@@ -134,11 +134,17 @@ read_state() {
 start_sql_proxy() {
     info "Starting Cloud SQL Auth Proxy..."
     
-    # 1. Get Instance Connection Name
-    # Try Terraform output first, fallback to gcloud
-    pushd "$REPO_ROOT/infra/environments/$ENV_NAME" > /dev/null
-    DB_INSTANCE_NAME=$(terraform output -raw cloud_sql_connection_name 2>/dev/null)
-    popd > /dev/null
+    # 1. Get Instance Connection Name: $INSTANCE_CONNECTION_NAME if set, else Terraform output, else gcloud.
+    #    developlocal: only use Terraform when it is installed and the env dir exists, and only accept a
+    #    value shaped like project:region:instance. (In Cloud Shell `terraform` is missing and its
+    #    "command not found" helper prints install instructions to stdout, which were used as the name.)
+    local CONN_RE='^[a-z0-9.:-]+:[a-z0-9-]+:[a-z0-9-]+$'
+    DB_INSTANCE_NAME="${INSTANCE_CONNECTION_NAME:-}"
+    if [[ ! "$DB_INSTANCE_NAME" =~ $CONN_RE ]] && command -v terraform > /dev/null 2>&1 \
+        && [ -d "$REPO_ROOT/infra/environments/$ENV_NAME" ]; then
+        DB_INSTANCE_NAME=$(cd "$REPO_ROOT/infra/environments/$ENV_NAME" && terraform output -raw cloud_sql_connection_name 2>/dev/null)
+    fi
+    [[ "$DB_INSTANCE_NAME" =~ $CONN_RE ]] || DB_INSTANCE_NAME=""
 
     if [ -z "$DB_INSTANCE_NAME" ]; then
         DB_INSTANCE_NAME=$(gcloud sql instances list --format="value(connectionName)" --filter="name:creative-studio-db*" --project="$GCP_PROJECT_ID" | head -n 1)
