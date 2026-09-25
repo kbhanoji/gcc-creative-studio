@@ -150,14 +150,26 @@ start_sql_proxy() {
 
     export INSTANCE_CONNECTION_NAME="$DB_INSTANCE_NAME"
 
-    # 2. Download Proxy (if missing)
-    if [ ! -f "cloud-sql-proxy" ]; then
-        curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.0/cloud-sql-proxy.linux.amd64
-        chmod +x cloud-sql-proxy
+    # 2. Download Proxy for THIS machine (developlocal: upstream always fetched linux.amd64,
+    #    which can't run on macOS / Apple Silicon and failed silently)
+    local PROXY_OS PROXY_ARCH
+    PROXY_OS=$(uname -s | tr '[:upper:]' '[:lower:]')          # linux | darwin
+    case "$(uname -m)" in
+        x86_64|amd64) PROXY_ARCH="amd64" ;;
+        arm64|aarch64) PROXY_ARCH="arm64" ;;
+        *) fail "Unsupported CPU architecture for Cloud SQL Proxy: $(uname -m)" ;;
+    esac
+    PROXY_BIN="cloud-sql-proxy.${PROXY_OS}.${PROXY_ARCH}"
+    if [ ! -x "$PROXY_BIN" ] || ! "./$PROXY_BIN" --version > /dev/null 2>&1; then
+        info "Downloading Cloud SQL Proxy (${PROXY_OS}/${PROXY_ARCH})..."
+        curl -fsSLo "$PROXY_BIN" "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.0/${PROXY_BIN}" \
+            || fail "Could not download ${PROXY_BIN}"
+        chmod +x "$PROXY_BIN"
     fi
 
-    # 3. Start Proxy in Background (Port 5432)
-    ./cloud-sql-proxy --address 0.0.0.0 --port 5432 "$DB_INSTANCE_NAME" > /dev/null 2>&1 &
+    # 3. Start Proxy in Background (Port 5432), keeping its output for troubleshooting
+    PROXY_LOG="$(pwd)/cloud-sql-proxy.log"
+    "./$PROXY_BIN" --address 127.0.0.1 --port 5432 "$DB_INSTANCE_NAME" > "$PROXY_LOG" 2>&1 &
     PROXY_PID=$!
     export PROXY_PID
     
@@ -172,7 +184,9 @@ start_sql_proxy() {
         sleep 1
     done
     echo
-    warn "Proxy connection check timed out, but proceeding..."
+    warn "Cloud SQL Proxy did not accept connections within 30 s. Proxy log (${PROXY_LOG}):"
+    tail -n 20 "$PROXY_LOG" 2>/dev/null || true
+    fail "Cloud SQL Proxy is not running. Fix the error above (e.g. port 5432 already in use, missing roles/cloudsql.client) and re-run."
 }
 
 stop_sql_proxy() {

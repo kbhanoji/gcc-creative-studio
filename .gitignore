@@ -20,3 +20,5 @@ local/
 genmedia-agent-demos
 .gemini
 .agents
+# developlocal: Cloud SQL Proxy binaries/logs downloaded by bootstrap.sh
+cloud-sql-proxy*
