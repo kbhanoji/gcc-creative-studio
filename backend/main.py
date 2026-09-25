@@ -112,14 +112,20 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize Firebase: {e}")
 
     # Run Database Migrations
-    try:
-        from src.database_migrations import run_pending_migrations
+    from src.database_autostart import db_autostart
+    from src.database_migrations import run_pending_migrations
 
-        await run_pending_migrations()
-    except Exception as e:
-        logger.error(f"Failed to run database migrations: {e}")
-        # We might want to stop startup here if migrations fail
-        raise e
+    if db_autostart.enabled:
+        # developlocal: the database may be stopped. Start it (and migrate) in the
+        # background so the container comes up at once; requests wait for it.
+        db_autostart.start(run_pending_migrations)
+    else:
+        try:
+            await run_pending_migrations()
+        except Exception as e:
+            logger.error(f"Failed to run database migrations: {e}")
+            # We might want to stop startup here if migrations fail
+            raise e
 
     logger.info("Creating ThreadPoolExecutor...")
     # Create the pool and attach it to the app's state
@@ -157,6 +163,36 @@ async def generic_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "An internal server error occurred."},
+    )
+
+
+DB_WAIT_EXEMPT_PATHS = {"/", "/api/version", "/docs", "/openapi.json"}
+
+
+@app.middleware("http")
+async def wait_for_database(request: Request, call_next):
+    """developlocal: hold requests until an auto-started database is ready."""
+    from src.database_autostart import db_autostart
+    from src.database_migrations import run_pending_migrations
+
+    if (
+        not db_autostart.enabled
+        or db_autostart.ready.is_set()
+        or request.method == "OPTIONS"
+        or request.url.path in DB_WAIT_EXEMPT_PATHS
+    ):
+        return await call_next(request)
+
+    db_autostart.start(run_pending_migrations)  # retries if a previous attempt failed
+    if await db_autostart.wait(config_service.DB_AUTOSTART_REQUEST_WAIT_SECONDS):
+        return await call_next(request)
+    return JSONResponse(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "detail": "The database is starting up. The request is retried automatically.",
+            "last_error": db_autostart.last_error,
+        },
+        headers={"Retry-After": "10", "X-DB-Starting": "true"},
     )
 
 

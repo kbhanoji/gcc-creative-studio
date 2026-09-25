@@ -64,6 +64,7 @@ locals {
       "SIGNING_SA_EMAIL"       = google_service_account.bucket_reader_sa.email
       "BACKEND_URL"            = local.backend_url
       "WORKFLOWS_EXECUTOR_URL" = "${local.backend_url}/api/workflows-executor"
+      "DB_AUTOSTART"           = var.db_autostart ? "true" : "false"
     }
   )
 }
@@ -94,6 +95,8 @@ module "postgresql" {
   
   # Pass the ACTUAL value to create the user
   db_password = data.google_secret_manager_secret_version.db_password.secret_data
+  db_tier     = var.db_tier
+  db_edition  = var.db_edition
 }
 
 # --- Service Module Calls ---
@@ -114,7 +117,7 @@ module "backend_service" {
   container_env_vars    = local.backend_env_vars
   runtime_secrets = var.backend_runtime_secrets
   custom_audiences      = var.backend_custom_audiences
-  scaling_min_instances = 1
+  scaling_min_instances = var.be_min_instances # developlocal: 0 = scale to zero when idle
   source_repository_id = google_cloudbuildv2_repository.source_repo.id
   cpu = var.be_cpu
   memory = var.be_memory
@@ -194,4 +197,12 @@ resource "google_cloud_run_v2_service_iam_member" "fe_trigger_can_view_backend" 
   location = module.backend_service.location
   role     = "roles/run.viewer"
   member   = "serviceAccount:${module.frontend_service.trigger_sa_email}"
+}
+
+# developlocal: let the backend start a stopped Cloud SQL instance on the first request.
+resource "google_project_iam_member" "backend_cloudsql_autostart" {
+  count   = var.db_autostart ? 1 : 0
+  project = var.gcp_project_id
+  role    = "roles/cloudsql.editor"
+  member  = "serviceAccount:${module.backend_service.service_account_email}"
 }

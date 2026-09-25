@@ -17,3 +17,7 @@ variable "region" {}
 variable "db_name" { default = "creative_studio" }
 variable "db_user" { default = "studio_user" }
 variable "db_password" { sensitive = true }
+
+# developlocal: size the instance per environment (e.g. ENTERPRISE + db-custom-1-3840 for dev)
+variable "db_tier" { default = "db-perf-optimized-N-2" }
+variable "db_edition" { default = null }

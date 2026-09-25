@@ -87,3 +87,28 @@ variable "backend_runtime_secrets" {
   description = "Secrets to mount in the backend container at runtime."
   default     = {}
 }
+
+# --- developlocal: cost controls for development ---
+variable "be_min_instances" {
+  type        = number
+  description = "Minimum backend Cloud Run instances. 0 = scale to zero when idle (cold start on first request)."
+  default     = 0
+}
+
+variable "db_autostart" {
+  type        = bool
+  description = "Backend starts a stopped Cloud SQL instance on the first request (grants roles/cloudsql.editor)."
+  default     = true
+}
+
+variable "db_tier" {
+  type        = string
+  description = "Cloud SQL machine tier. Upstream default db-perf-optimized-N-2 (Enterprise Plus)."
+  default     = "db-perf-optimized-N-2"
+}
+
+variable "db_edition" {
+  type        = string
+  description = "Cloud SQL edition (ENTERPRISE or ENTERPRISE_PLUS). null = provider default."
+  default     = null
+}

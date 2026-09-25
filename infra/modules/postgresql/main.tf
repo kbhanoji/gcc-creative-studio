@@ -23,7 +23,8 @@ resource "google_sql_database_instance" "default" {
   project          = var.project_id
 
   settings {
-    tier = "db-perf-optimized-N-2"
+    tier    = var.db_tier    # developlocal: configurable (default unchanged)
+    edition = var.db_edition # null = provider default for the version
     
     # Enable IAM Authentication for better security (optional but recommended)
     database_flags {

@@ -81,6 +81,7 @@ import {AppRoutingModule} from './app-routing.module';
 import {AppComponent} from './app.component';
 import {AudioComponent} from './audio/audio.component';
 import {AuthInterceptor} from './auth.interceptor';
+import {DbStartingInterceptor} from './db-starting.interceptor';
 
 import {FlowPromptBoxComponent} from './common/components/flow-prompt-box/flow-prompt-box.component';
 import {ImageCropperDialogComponent} from './common/components/image-cropper-dialog/image-cropper-dialog.component';
@@ -226,6 +227,8 @@ import {SafeUrlPipe} from './common/pipes/safe-url.pipe';
     {
       provide: UserTrackingService, // Automatically track user interactions
     },
+    // developlocal: outermost, so each retry re-runs AuthInterceptor (fresh token)
+    {provide: HTTP_INTERCEPTORS, useClass: DbStartingInterceptor, multi: true},
     {provide: HTTP_INTERCEPTORS, useClass: AuthInterceptor, multi: true},
   ],
   bootstrap: [AppComponent],

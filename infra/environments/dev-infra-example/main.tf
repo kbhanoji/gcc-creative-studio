@@ -45,6 +45,12 @@ resource "google_project_service" "apis" {
 module "creative_studio_platform" {
   source = "../../modules/platform"
 
+  # developlocal cost controls
+  be_min_instances = var.be_min_instances
+  db_autostart     = var.db_autostart
+  db_tier          = var.db_tier
+  db_edition       = var.db_edition
+
   gcp_project_id            = var.gcp_project_id
   gcp_region                = var.gcp_region
   environment               = var.environment

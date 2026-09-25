@@ -71,6 +71,10 @@ class ConfigService(BaseSettings):
     USE_CLOUD_SQL_AUTH_PROXY: bool = False
     DB_HOST: str = "localhost"
     DB_PORT: str = "5432"
+    # developlocal: start a stopped Cloud SQL instance when a request arrives
+    DB_AUTOSTART: bool = False
+    DB_AUTOSTART_TIMEOUT_SECONDS: int = 600
+    DB_AUTOSTART_REQUEST_WAIT_SECONDS: int = 45  # < Firebase Hosting's 60 s proxy limit
 
     # --- Veo ---
     VEO_MODEL_ID: str = "veo-3.1-generate-001"
