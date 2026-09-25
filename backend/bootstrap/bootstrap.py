@@ -32,6 +32,10 @@ from src.common.schema.media_item_model import AssetRoleEnum
 from src.common.storage_service import GcsService
 from src.config.config_service import config_service
 from src.database import async_session_local, cleanup_connector
+# developlocal: register the folders table. develop added folder_id foreign keys on
+# source_assets and media_items; without this import SQLAlchemy raises
+# NoReferencedTableError when seeding assets (the app imports it via its routers).
+from src.folders.schema.folder_model import Folder  # noqa: F401
 from src.media_templates.repository.media_template_repository import (
     MediaTemplateRepository,
 )
