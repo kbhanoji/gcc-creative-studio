@@ -101,13 +101,31 @@ prompt_and_update_tfvar() {
     local tfvar_name=$3
     local var_to_set_ref=$4
 
-    read -p "   $prompt_text [default value: $default_value]: " user_input < /dev/tty
+    tty_read user_input "TFVAR_$(echo "$tfvar_name" | tr '[:lower:]' '[:upper:]')" "   $prompt_text [default value: $default_value]: "
     local final_value=${user_input:-$default_value}
 
 	sed -i.bak "s|^[#[:space:]]*${tfvar_name}[[:space:]]*=.*|${tfvar_name} = \"${final_value}\"|g" "$TFVARS_FILE_PATH"
 
     # Set the variable in the script's global scope
     eval "$var_to_set_ref='$final_value'"
+}
+
+# --- developlocal: non-interactive support ---
+# Every question can be answered in advance with an environment variable CS_<KEY>
+# (e.g. CS_PROJECT_ID, CS_BRANCH, CS_ENV_NAME, CS_HAVE_STATE_BUCKET=n, CS_CONNECTION_NAME,
+# CS_OAUTH_CLIENT_ID, CS_TERRAFORM_APPLY=y, CS_TRIGGER_BUILDS=y). Unset keys are asked on the
+# terminal as before. CS_NONINTERACTIVE=1 fails on an unanswered question instead of waiting.
+tty_read() {
+    local __var="$1" __key="CS_$2" __prompt="${3:-}" __silent="${4:-}"
+    if [ -n "${!__key:-}" ]; then
+        printf -v "$__var" '%s' "${!__key}"
+        if [ -n "$__silent" ]; then echo "   ${__prompt}(from ${__key}, hidden)"
+        else echo "   ${__prompt}${!__key}  (from ${__key})"; fi
+        return 0
+    fi
+    if [ "${CS_NONINTERACTIVE:-}" = "1" ]; then fail "No answer for ${__key} in non-interactive mode."; fi
+    if [ -n "$__silent" ]; then read -r -s -p "$__prompt" "$__var" < /dev/tty; echo
+    else read -r -p "$__prompt" "$__var" < /dev/tty; fi
 }
 
 # --- State Management ---
@@ -223,7 +241,7 @@ check_prerequisites() {
     command -v git >/dev/null || fail "git not found. Please install it."
     if ! command -v jq &> /dev/null; then
         warn "The 'jq' command is required but not found."
-        prompt "Would you like to try and install it now? (y/n)"; read -r REPLY < /dev/tty
+        prompt "Would you like to try and install it now? (y/n)"; tty_read REPLY INSTALL_TOOLS
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             warn "This may require sudo privileges."
 			if command -v apt-get &>/dev/null; then sudo apt-get update && sudo apt-get install -y jq
@@ -236,7 +254,7 @@ check_prerequisites() {
     fi
     if ! command -v firebase &> /dev/null; then
         warn "Firebase CLI ('firebase-tools') is not installed. It is required for automation."
-        prompt "Would you like to try and install it now via npm? (y/n)"; read -r REPLY < /dev/tty
+        prompt "Would you like to try and install it now via npm? (y/n)"; tty_read REPLY INSTALL_TOOLS
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             if ! command -v npm &> /dev/null; then fail "npm is required to install firebase-tools. Please install Node.js and npm first."; fi
             info "Installing firebase-tools globally..."; sudo npm install -g firebase-tools
@@ -314,7 +332,7 @@ setup_project() {
     CURRENT_GCLOUD_PROJECT=$(gcloud config get-value project 2>/dev/null || echo "")
 
     if [ -n "$GCP_PROJECT_ID" ]; then
-        prompt "Found project '$GCP_PROJECT_ID' from a previous run. Use this project? (y/n)"; read -r REPLY < /dev/tty
+        prompt "Found project '$GCP_PROJECT_ID' from a previous run. Use this project? (y/n)"; tty_read REPLY USE_PREVIOUS_PROJECT
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             gcloud config set project "$GCP_PROJECT_ID"
             success "Project '$GCP_PROJECT_ID' is configured."
@@ -322,7 +340,7 @@ setup_project() {
         fi
     elif [ -n "$CURRENT_GCLOUD_PROJECT" ]; then
         prompt "Detected active gcloud project '$CURRENT_GCLOUD_PROJECT'. Use this project? (y/n)"
-        read -r REPLY < /dev/tty
+        tty_read REPLY USE_ACTIVE_PROJECT
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             GCP_PROJECT_ID=$CURRENT_GCLOUD_PROJECT
             info "Using existing project '$GCP_PROJECT_ID'."
@@ -331,12 +349,12 @@ setup_project() {
             return
         fi
     fi
-    prompt "Do you already have a Google Cloud Project to use? (y/n)"; read -r REPLY < /dev/tty
+    prompt "Do you already have a Google Cloud Project to use? (y/n)"; tty_read REPLY HAVE_PROJECT
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        prompt "Please enter your existing Google Cloud Project ID:"; read -p "   Project ID: " GCP_PROJECT_ID < /dev/tty
+        prompt "Please enter your existing Google Cloud Project ID:"; tty_read GCP_PROJECT_ID PROJECT_ID "   Project ID: "
     else
-        prompt "What is the desired new Google Cloud Project ID? (e.g., my-creative-studio)"; read -p "   Project ID: " GCP_PROJECT_ID < /dev/tty
-        prompt "What is your Google Cloud Billing Account ID? (Find it with 'gcloud beta billing accounts list')"; read -p "   Billing Account ID: " BILLING_ACCOUNT_ID < /dev/tty
+        prompt "What is the desired new Google Cloud Project ID? (e.g., my-creative-studio)"; tty_read GCP_PROJECT_ID PROJECT_ID "   Project ID: "
+        prompt "What is your Google Cloud Billing Account ID? (Find it with 'gcloud beta billing accounts list')"; tty_read BILLING_ACCOUNT_ID BILLING_ACCOUNT "   Billing Account ID: "
         info "Creating project '$GCP_PROJECT_ID'..."; gcloud projects create "$GCP_PROJECT_ID" || warn "Project '$GCP_PROJECT_ID' may already exist. Continuing..."
         info "Linking billing account '$BILLING_ACCOUNT_ID'..."; gcloud beta billing projects link "$GCP_PROJECT_ID" --billing-account="$BILLING_ACCOUNT_ID"
     fi
@@ -351,7 +369,7 @@ setup_repo() {
     warn "Please fork the main repository first: ${UPSTREAM_REPO_URL}/fork"
     while true; do
         prompt "What is the git URL of YOUR forked repository? (e.g., https://github.com/user/repo.git)"
-        read -p "   Git URL: " GITHUB_REPO_URL < /dev/tty
+        tty_read GITHUB_REPO_URL REPO_URL "   Git URL: "
         if [ -z "$GITHUB_REPO_URL" ]; then warn "Repository URL cannot be empty."; continue; fi
         info "Validating repository URL..."
         if git ls-remote --exit-code -h "$GITHUB_REPO_URL" > /dev/null 2>&1; then
@@ -361,14 +379,14 @@ setup_repo() {
 
     # --- Ask for Branch ---
     prompt "Which git branch would you like to use? (default: main)"
-    read -p "   Branch Name: " SELECTED_BRANCH < /dev/tty
+    tty_read SELECTED_BRANCH BRANCH "   Branch Name: "
     SELECTED_BRANCH=${SELECTED_BRANCH:-main}
     DEFAULT_BRANCH_NAME="$SELECTED_BRANCH"
 
     local REPO_CLONE_DIR=$(basename "$GITHUB_REPO_URL" .git)
 
     if [[ -d "$REPO_CLONE_DIR" ]]; then
-        warn "Directory '$REPO_CLONE_DIR' already exists."; prompt "Do you want to use this existing directory? (y/n)"; read -r REPLY < /dev/tty
+        warn "Directory '$REPO_CLONE_DIR' already exists."; prompt "Do you want to use this existing directory? (y/n)"; tty_read REPLY USE_EXISTING_DIR
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then fail "Please remove the directory or run the script from a different location."; fi
     else
         info "Performing a sparse checkout of '$REPO_CLONE_DIR' (Branch: $SELECTED_BRANCH)..."
@@ -416,7 +434,7 @@ configure_environment() {
     step 5 "Configuring Terraform Environment";
     cd "$REPO_ROOT/infra"
     if [ -z "$ENV_NAME" ]; then
-        prompt "What would you like to call this deployment environment?"; read -p "   Environment Name [default value: $DEFAULT_ENV_NAME]: " ENV_NAME < /dev/tty
+        prompt "What would you like to call this deployment environment?"; tty_read ENV_NAME ENV_NAME "   Environment Name [default value: $DEFAULT_ENV_NAME]: "
         ENV_NAME=${ENV_NAME:-$DEFAULT_ENV_NAME}
     else info "Using previously configured environment: $ENV_NAME"; fi
     ENV_DIR="environments/$ENV_NAME";
@@ -425,9 +443,9 @@ configure_environment() {
     read_state
     if [ ! -d "$ENV_DIR" ]; then
         info "Creating new environment directory from template: $TEMPLATE_ENV_DIR"; cp -r "$TEMPLATE_ENV_DIR" "$ENV_DIR"
-        prompt "Do you have an existing GCS bucket for Terraform state? (y/n)"; read -r REPLY < /dev/tty
+        prompt "Do you have an existing GCS bucket for Terraform state? (y/n)"; tty_read REPLY HAVE_STATE_BUCKET
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            prompt "Please enter the name of your GCS bucket:"; read -p "   Bucket Name: " BUCKET_NAME < /dev/tty
+            prompt "Please enter the name of your GCS bucket:"; tty_read BUCKET_NAME STATE_BUCKET "   Bucket Name: "
         else
             BUCKET_SUFFIX=$(printf "$GCS_BUCKET_SUFFIX_FORMAT" "$ENV_NAME"); BUCKET_NAME="${GCP_PROJECT_ID}-${BUCKET_SUFFIX}"
             info "Creating GCS bucket '$BUCKET_NAME' for Terraform state..."; gsutil mb -p "$GCP_PROJECT_ID" "gs://${BUCKET_NAME}" || warn "Bucket 'gs://${BUCKET_NAME}' may already exist. Continuing..."
@@ -472,8 +490,8 @@ handle_manual_steps() {
     step 6 "Manual Steps Required"; cd "$REPO_ROOT/infra"; TFVARS_FILE_PATH="$ENV_DIR/$ENV_NAME.tfvars"
     info "Enabling required Google Cloud APIs..."; gcloud services enable cloudbuild.googleapis.com secretmanager.googleapis.com firebase.googleapis.com iap.googleapis.com identitytoolkit.googleapis.com texttospeech.googleapis.com workflows.googleapis.com --project="$GCP_PROJECT_ID"
     if [ -z "$GITHUB_CONN_NAME" ]; then
-        prompt "\nDo you already have a Cloud Build Host Connection for GitHub in this project? (y/n)"; read -r REPLY < /dev/tty
-        if [[ $REPLY =~ ^[Yy]$ ]]; then prompt "Please enter the existing connection name:"; read -p "   Connection Name: " GITHUB_CONN_NAME < /dev/tty
+        prompt "\nDo you already have a Cloud Build Host Connection for GitHub in this project? (y/n)"; tty_read REPLY HAVE_CONNECTION
+        if [[ $REPLY =~ ^[Yy]$ ]]; then prompt "Please enter the existing connection name:"; tty_read GITHUB_CONN_NAME CONNECTION_NAME "   Connection Name: "
         else
             warn "You will now be guided to create a new GitHub connection."; info "Please perform the following manual steps:"
             echo "1. Open this URL in your browser:"; echo -e "   ${C_YELLOW}https://console.cloud.google.com/cloud-build/connections/create?project=${GCP_PROJECT_ID}${C_RESET}"
@@ -481,7 +499,7 @@ handle_manual_steps() {
             echo "3. Follow the prompts to authorize the app on your GitHub account."; 
             echo "4. Grant access to your forked repository: '${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}'."
             echo "5. After creating the connection, copy its name (e.g., 'gh-yourname-con')."
-            prompt "Paste the new Cloud Build Connection Name here:"; read -p "   Connection Name: " GITHUB_CONN_NAME < /dev/tty
+            prompt "Paste the new Cloud Build Connection Name here:"; tty_read GITHUB_CONN_NAME CONNECTION_NAME "   Connection Name: "
         fi
         sed -i.bak "s|^[#[:space:]]*github_conn_name[[:space:]]*=.*|github_conn_name = \"$GITHUB_CONN_NAME\"|g" "$TFVARS_FILE_PATH"
         write_state "GITHUB_CONN_NAME" "$GITHUB_CONN_NAME"
@@ -489,7 +507,7 @@ handle_manual_steps() {
     warn "\nTerraform cannot accept legal terms on your behalf."; info "Please perform this one-time manual step for Firebase:"
     echo "1. Open this URL in your browser:"; echo -e "   ${C_YELLOW}https://console.firebase.google.com/?project=${GCP_PROJECT_ID}${C_RESET}"
     echo "2. You should be prompted to 'Add Firebase' to your existing project."; echo "3. Follow the prompts and accept the terms."
-    prompt "Press [Enter] to continue after you have linked the project."; read -r < /dev/tty
+    prompt "Press [Enter] to continue after you have linked the project."; tty_read _FIREBASE_LINKED FIREBASE_LINKED
     rm -f "$TFVARS_FILE_PATH.bak"
 
     # --- Automate .tfvars placeholder replacement ---
@@ -500,7 +518,7 @@ handle_manual_steps() {
         echo -e "   ${C_YELLOW}https://console.cloud.google.com/apis/credentials?project=${GCP_PROJECT_ID}${C_RESET}"
         echo "2. Find the OAuth 2.0 Client ID of type 'Web application'."
         prompt "Paste the OAuth Client ID here:"
-        read -p "   Client ID: " AUTO_OAUTH_CLIENT_ID < /dev/tty
+        tty_read AUTO_OAUTH_CLIENT_ID OAUTH_CLIENT_ID "   Client ID: "
         if [ -z "$AUTO_OAUTH_CLIENT_ID" ]; then fail "OAuth Client ID is required to proceed."; fi
     fi
 
@@ -562,7 +580,7 @@ populate_oauth_secrets() {
         echo -e "   ${C_YELLOW}https://console.cloud.google.com/apis/credentials?project=${GCP_PROJECT_ID}${C_RESET}"
         echo "2. Find the OAuth 2.0 Client ID of type 'Web application'."
         prompt "Paste the OAuth Client ID here:"
-        read -p "   Client ID: " AUTO_OAUTH_CLIENT_ID < /dev/tty
+        tty_read AUTO_OAUTH_CLIENT_ID OAUTH_CLIENT_ID "   Client ID: "
         if [ -z "$AUTO_OAUTH_CLIENT_ID" ]; then
             fail "OAuth Client ID is required to proceed. Please restart the script."
         fi
@@ -617,7 +635,7 @@ run_terraform() {
 	TFVARS_FILE_PATH="$REPO_ROOT/infra/environments/$ENV_NAME/$ENV_NAME.tfvars"; info "Navigating to $REPO_ROOT/infra/environments/$ENV_NAME..."; cd "$REPO_ROOT/infra/environments/$ENV_NAME"
     info "Initializing Terraform..."; terraform init -reconfigure
     info "Planning Terraform changes..."; terraform plan -var-file="$TFVARS_FILE_PATH"
-    prompt "\nTerraform is ready to apply the changes. This will create the infrastructure, including empty secret shells."; prompt "Do you want to proceed with 'terraform apply'? (y/n)"; read -r REPLY < /dev/tty
+    prompt "\nTerraform is ready to apply the changes. This will create the infrastructure, including empty secret shells."; prompt "Do you want to proceed with 'terraform apply'? (y/n)"; tty_read REPLY TERRAFORM_APPLY
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then warn "Apply cancelled."; return; fi
     terraform apply -auto-approve -var-file="$TFVARS_FILE_PATH" -parallelism=30
 }
@@ -694,7 +712,7 @@ update_secrets() {
             # This fallback is now only for secrets that are not auto-discovered
             warn "  This secret requires manual input."
             echo -e "${C_CYAN}  It is safe to paste your secret. The value is read securely, not displayed, and not stored in history.${C_RESET}"
-            read -s -p "  Enter new value: " SECRET_VALUE < /dev/tty; echo
+            tty_read SECRET_VALUE "SECRET_${SECRET_NAME}" "  Enter new value: " silent; echo
 
             if [ -z "$SECRET_VALUE" ]; then warn "  No value provided. Skipping ${SECRET_NAME}."; continue; fi
             echo -n "$SECRET_VALUE" | gcloud secrets versions add "$SECRET_NAME" --data-file="-" --project="$GCP_PROJECT_ID" --quiet
@@ -780,7 +798,7 @@ seed_data() {
 
 trigger_builds() {
     step 14 "Triggering Initial Builds"; cd "$REPO_ROOT"
-    prompt "Would you like to trigger the initial builds for the frontend and backend now? (y/n)"; read -r REPLY < /dev/tty
+    prompt "Would you like to trigger the initial builds for the frontend and backend now? (y/n)"; tty_read REPLY TRIGGER_BUILDS
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then info "You can trigger the builds manually later by pushing a commit or via the Cloud Build UI."; return; fi
 
     local BRANCH_TO_USE

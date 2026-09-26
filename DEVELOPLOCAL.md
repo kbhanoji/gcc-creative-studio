@@ -46,3 +46,21 @@ image_keep_count = 5
 ```
 
 Keep `main` (upstream defaults: warm backend, Enterprise Plus database, no autostart) for enterprise/production.
+
+## Non-interactive install (used by the pipeline's Cloud Shell installer)
+
+Every `bootstrap.sh` question can be answered in advance with an environment variable `CS_<KEY>`. Unset keys are asked on the terminal as before. `CS_NONINTERACTIVE=1` makes an unanswered question fail instead of waiting.
+
+| Key | Question |
+|---|---|
+| `CS_USE_PREVIOUS_PROJECT`, `CS_USE_ACTIVE_PROJECT`, `CS_HAVE_PROJECT` | project reuse (y/n) |
+| `CS_PROJECT_ID`, `CS_BILLING_ACCOUNT` | project / billing (new project only) |
+| `CS_REPO_URL`, `CS_BRANCH`, `CS_USE_EXISTING_DIR` | fork URL, branch, reuse existing clone (y/n) |
+| `CS_ENV_NAME`, `CS_HAVE_STATE_BUCKET`, `CS_STATE_BUCKET` | environment folder name, state bucket (y/n, name) |
+| `CS_TFVAR_GITHUB_BRANCH_NAME` | "GitHub Branch to deploy from" |
+| `CS_HAVE_CONNECTION`, `CS_CONNECTION_NAME` | Cloud Build GitHub connection (y/n, name) |
+| `CS_FIREBASE_LINKED` | any value = "Firebase terms accepted, continue" |
+| `CS_OAUTH_CLIENT_ID` | OAuth web client ID |
+| `CS_TERRAFORM_APPLY`, `CS_TRIGGER_BUILDS` | y/n |
+| `CS_INSTALL_TOOLS` | y/n (auto-install a missing jq / firebase-tools) |
+| `CS_SECRET_<NAME>` | value for a secret that can't be discovered automatically |
