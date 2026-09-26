@@ -114,16 +114,22 @@ prompt_and_update_tfvar() {
 # Every question can be answered in advance with an environment variable CS_<KEY>
 # (e.g. CS_PROJECT_ID, CS_BRANCH, CS_ENV_NAME, CS_HAVE_STATE_BUCKET=n, CS_CONNECTION_NAME,
 # CS_OAUTH_CLIENT_ID, CS_TERRAFORM_APPLY=y, CS_TRIGGER_BUILDS=y). Unset keys are asked on the
-# terminal as before. CS_NONINTERACTIVE=1 fails on an unanswered question instead of waiting.
+# terminal as before. CS_NONINTERACTIVE=1 fails on an unanswered question instead of waiting,
+# except optional secret prompts, which are skipped (same as pressing Enter). CS_<KEY>=__EMPTY__
+# answers with an empty value.
 tty_read() {
     local __var="$1" __key="CS_$2" __prompt="${3:-}" __silent="${4:-}"
+    if [ "${!__key:-}" = "__EMPTY__" ]; then printf -v "$__var" '%s' ""; echo "   ${__prompt}(empty, from ${__key})"; return 0; fi
     if [ -n "${!__key:-}" ]; then
         printf -v "$__var" '%s' "${!__key}"
         if [ -n "$__silent" ]; then echo "   ${__prompt}(from ${__key}, hidden)"
         else echo "   ${__prompt}${!__key}  (from ${__key})"; fi
         return 0
     fi
-    if [ "${CS_NONINTERACTIVE:-}" = "1" ]; then fail "No answer for ${__key} in non-interactive mode."; fi
+    if [ "${CS_NONINTERACTIVE:-}" = "1" ]; then
+        if [ -n "$__silent" ]; then warn "No ${__key} given; skipping this optional secret."; printf -v "$__var" '%s' ""; return 0; fi
+        fail "No answer for ${__key} in non-interactive mode."
+    fi
     if [ -n "$__silent" ]; then read -r -s -p "$__prompt" "$__var" < /dev/tty; echo
     else read -r -p "$__prompt" "$__var" < /dev/tty; fi
 }
